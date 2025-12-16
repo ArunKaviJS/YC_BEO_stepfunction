@@ -46,6 +46,20 @@ def lambda_handler(event, context):
     summary = {}
 
     try:
+        
+        # --- Fetch existing invoiceNo before extraction ---
+        existing_invoice_no = None
+
+        existing_doc = col_files.find_one(
+            {"_id": file_oid},
+            {"extractedValues.invoiceNo": 1}
+        )
+
+        if existing_doc:
+            existing_invoice_no = existing_doc.get("extractedValues", {}).get("invoiceNo")
+
+        print("[DEBUG] Existing invoiceNo:", existing_invoice_no)
+
         # --- Extract structured invoice items from text ---
         structured = itemdescription_function(text_content)
         print('*********')
@@ -89,18 +103,38 @@ def lambda_handler(event, context):
         )
         print(f"[CREDITS] {credit_result}")
         
-        invoice_no = generate_invoice_number(db, structured.get("invoiceDate"),userId)
-        structured["invoiceNo"] = invoice_no
-        print("Generated InvoiceNo:", invoice_no)
+        # --- Final invoiceNo decision ---
+        if existing_invoice_no:
+            # Preserve existing invoice number
+            structured["invoiceNo"] = existing_invoice_no
+            print("[INFO] Reusing existing invoiceNo:", existing_invoice_no)
 
-        # update also in DB after structured updated
-        col_files.update_one(
-            {"_id": file_oid},
-            {"$set": {
-                "extractedValues.invoiceNo": invoice_no,
-                "updatedExtractedValues.invoiceNo": invoice_no
-            }}
-        )
+            col_files.update_one(
+                {"_id": file_oid},
+                {"$set": {
+                    "extractedValues.invoiceNo": existing_invoice_no,
+                    "updatedExtractedValues.invoiceNo": existing_invoice_no
+                }}
+            )
+
+        else:
+            # Generate only if NOT existing
+            invoice_no = generate_invoice_number(
+                db,
+                structured.get("invoiceDate"),
+                userId)
+
+            structured["invoiceNo"] = invoice_no
+            print("[INFO] Generated new invoiceNo:", invoice_no)
+
+            col_files.update_one(
+                {"_id": file_oid},
+                {"$set": {
+                    "extractedValues.invoiceNo": invoice_no,
+                    "updatedExtractedValues.invoiceNo": invoice_no
+                }}
+            )
+
 
     except Exception as e:
         print(f"[ERROR] {e}")

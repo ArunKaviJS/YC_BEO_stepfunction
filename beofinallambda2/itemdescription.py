@@ -161,10 +161,11 @@ def generate_invoice_number(db, invoice_date: str, user_id: str):
     # --- Count all documents with invoiceNo belonging to this user ---
     count_existing = db["tb_file_details"].count_documents({
         "userId": ObjectId(user_id),
+        "status": "1",  # IMPORTANT
         "extractedValues.invoiceNo": {"$exists": True}
     })
 
-    base = 172  # Start point
+    base = 173  # Start point
 
     # First invoice for this user
     if count_existing == 0:
@@ -173,5 +174,13 @@ def generate_invoice_number(db, invoice_date: str, user_id: str):
         seq = base + count_existing
 
     seq_str = str(seq).zfill(4)
+    
+    invoice_no = f"{PREFIX}-{year_code}-{seq_str}"
+    
+    print(f"[DEBUG] status=1 invoice count: {count_existing}")
+
+    print(f"[DEBUG] Generated invoiceNo: {invoice_no}")
 
     return f"{PREFIX}-{year_code}-{seq_str}"
+
+
