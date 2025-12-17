@@ -52,11 +52,11 @@ def lambda_handler(event, context):
 
         existing_doc = col_files.find_one(
             {"_id": file_oid},
-            {"extractedValues.invoiceNo": 1}
+            {"updatedExtractedValues.invoiceNo": 1}
         )
 
         if existing_doc:
-            existing_invoice_no = existing_doc.get("extractedValues", {}).get("invoiceNo")
+            existing_invoice_no = existing_doc.get("updatedExtractedValues", {}).get("invoiceNo")
 
         print("[DEBUG] Existing invoiceNo:", existing_invoice_no)
 
