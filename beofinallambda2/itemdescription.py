@@ -13,7 +13,7 @@ from bson import ObjectId
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from utils import utc_now_iso, detect_currency, update_job_status, jobs
-
+import re
 from azure_llm_agent import AzureLLMAgent
 
 
@@ -140,47 +140,98 @@ def itemdescription_function(extracted_text: str):
         }
 
         
-from bson import ObjectId
+# from bson import ObjectId
+
+# def generate_invoice_number(db, invoice_date: str, user_id: str):
+#     """
+#     Generate next invoice number for a specific user:
+#     - Start at 0172
+#     - Next = 0172 + count(existing invoiceNos for that user)
+#     """
+
+#     PREFIX = "PFI"
+
+#     # --- Build Year Code ---
+#     try:
+#         year = int(invoice_date.split("-")[0])
+#         year_code = f"E{str(year)[-2:]}"   # 2025 -> E25
+#     except:
+#         raise Exception("Invalid invoiceDate format; expected YYYY-MM-DD")
+
+#     # --- Count all documents with invoiceNo belonging to this user ---
+#     count_existing = db["tb_file_details"].count_documents({
+#         "userId": ObjectId(user_id),
+#         "status": "1",  # IMPORTANT
+#         "extractedValues.invoiceNo": {"$exists": True}
+#     })
+
+#     base = 173  # Start point
+
+#     # First invoice for this user
+#     if count_existing == 0:
+#         seq = base
+#     else:
+#         seq = base + count_existing
+
+#     seq_str = str(seq).zfill(4)
+    
+#     invoice_no = f"{PREFIX}-{year_code}-{seq_str}"
+    
+#     print(f"[DEBUG] status=1 invoice count: {count_existing}")
+
+#     print(f"[DEBUG] Generated invoiceNo: {invoice_no}")
+
+#     return f"{PREFIX}-{year_code}-{seq_str}"
+
 
 def generate_invoice_number(db, invoice_date: str, user_id: str):
-    """
-    Generate next invoice number for a specific user:
-    - Start at 0172
-    - Next = 0172 + count(existing invoiceNos for that user)
-    """
 
     PREFIX = "PFI"
+    BASE = 173
 
     # --- Build Year Code ---
     try:
         year = int(invoice_date.split("-")[0])
-        year_code = f"E{str(year)[-2:]}"   # 2025 -> E25
+        year_code = f"E{str(year)[-2:]}"
     except:
         raise Exception("Invalid invoiceDate format; expected YYYY-MM-DD")
 
-    # --- Count all documents with invoiceNo belonging to this user ---
-    count_existing = db["tb_file_details"].count_documents({
-        "userId": ObjectId(user_id),
-        "status": "1",  # IMPORTANT
-        "extractedValues.invoiceNo": {"$exists": True}
-    })
+    # --- Fetch all invoiceNos for this user ---
+    cursor = db["tb_file_details"].find(
+        {
+            "userId": ObjectId(user_id),
+            "status": "1",
+            "updatedExtractedValues.invoiceNo": {"$exists": True}
+        },
+        {"updatedExtractedValues.invoiceNo": 1}
+    )
 
-    base = 173  # Start point
+    max_number = 0
 
-    # First invoice for this user
-    if count_existing == 0:
-        seq = base
-    else:
-        seq = base + count_existing
+    for doc in cursor:
+        invoice_no = doc["updatedExtractedValues"]["invoiceNo"]
 
-    seq_str = str(seq).zfill(4)
-    
+        # Expected format: PFI-E25-0172
+        parts = invoice_no.split("-")
+        if len(parts) != 3:
+            continue
+
+        try:
+            num = int(parts[2])
+            # print(num)  # 🔥 NO DIGIT LIMIT
+            max_number = max(max_number, num)
+            print(max_number)
+        except ValueError:
+            continue
+
+    # --- Decide next sequence ---
+    next_seq = BASE if max_number == 0 else max_number + 1
+
+    seq_str = str(next_seq).zfill(4)
+
     invoice_no = f"{PREFIX}-{year_code}-{seq_str}"
-    
-    print(f"[DEBUG] status=1 invoice count: {count_existing}")
 
+    print(f"[DEBUG] max_number found: {max_number}")
     print(f"[DEBUG] Generated invoiceNo: {invoice_no}")
 
-    return f"{PREFIX}-{year_code}-{seq_str}"
-
-
+    return invoice_no
